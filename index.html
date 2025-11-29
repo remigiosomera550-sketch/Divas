@@ -1,0 +1,223 @@
+<script>
+/* ---------------------------------------------------------
+    DIVAS Downloader – Upgraded (YouTube, TikTok, FB, IG)
+    Features:
+    1. YouTube support
+    2. Instagram support
+    3. Quality selector
+    4. Thumbnail preview
+    5. Auto-Paste button
+------------------------------------------------------------ */
+
+const APIS = {
+    tiktok: [
+        { url: "https://tikwm.com/api/?url=", name: "TikWM" }
+    ],
+    facebook: [
+        { url: "https://betadash-api-swordslush-production.up.railway.app/fbdl?url=", name: "BetaDash FB" },
+        { url: "https://api.douyin.wtf/api/v1/facebook?url=", name: "DouYin FB" }
+    ],
+    youtube: [
+        { url: "https://api.douyin.wtf/api/v1/youtube?url=", name: "DouYin YT" },
+        { url: "https://you-api.divas-2025.workers.dev/yt?url=", name: "DIVAS-YT-Fallback" }
+    ],
+    instagram: [
+        { url: "https://betadash-api-swordslush-production.up.railway.app/instadl?url=", name: "BetaDash IG" },
+        { url: "https://api.douyin.wtf/api/v1/instagram?url=", name: "DouYin IG" }
+    ]
+};
+
+/* ===================== STATUS MESSAGE ===================== */
+
+function showStatus(msg, type = "loading") {
+    const s = document.getElementById("statusMsg");
+    s.className = "status-msg show " + type;
+
+    if (type === "loading") s.innerHTML = `<span class="spinner"></span> ${msg}`;
+    else if (type === "success") s.innerHTML = `✔ ${msg}`;
+    else s.innerHTML = `⚠ ${msg}`;
+}
+
+/* ===================== SAFE JSON PARSER ===================== */
+
+async function safeJson(res) {
+    try { return await res.json(); }
+    catch { return null; }
+}
+
+/* ===================== AUTO DETECT PLATFORM ===================== */
+
+function detectPlatform(url) {
+    if (/tiktok\.com|vt\.tiktok/.test(url)) return "tiktok";
+    if (/facebook\.com|fb\.watch/.test(url)) return "facebook";
+    if (/instagram\.com/.test(url)) return "instagram";
+    if (/youtube\.com|youtu\.be/.test(url)) return "youtube";
+    return null;
+}
+
+/* ===================== THUMBNAIL EXTRACTOR ===================== */
+
+function extractThumbnail(data, platform) {
+    if (platform === "tiktok") return data?.data?.cover;
+    if (platform === "facebook") return data?.thumb || data?.poster;
+    if (platform === "youtube") return data?.thumbnail;
+    if (platform === "instagram") {
+        if (data?.data?.thumbnail) return data.data.thumbnail;
+        if (data?.data?.images?.length > 0) return data.data.images[0];
+    }
+    return null;
+}
+
+/* ===================== QUALITY EXTRACTOR ===================== */
+
+function extractVideoQualities(data, platform) {
+    let out = { hd: null, sd: null, audio: null };
+
+    if (platform === "tiktok") {
+        out.hd = data?.data?.hdplay;
+        out.sd = data?.data?.play;
+        out.audio = data?.data?.music;
+    }
+
+    if (platform === "facebook") {
+        out.hd = data?.hd;
+        out.sd = data?.sd;
+    }
+
+    if (platform === "youtube") {
+        out.hd = data?.hd;
+        out.sd = data?.sd;
+        out.audio = data?.audio;
+    }
+
+    if (platform === "instagram") {
+        if (data?.data?.video_url) out.hd = data.data.video_url;
+        if (data?.data?.video_url) out.sd = data.data.video_url;
+    }
+
+    return out;
+}
+
+/* ===================== BUILD QUALITY BUTTONS ===================== */
+
+function buildQualityButtons(q, platform) {
+    const box = document.getElementById("qualityButtons");
+    box.innerHTML = "";
+
+    function add(text, url, color) {
+        if (!url) return;
+        const btn = document.createElement("a");
+        btn.href = url;
+        btn.download = `DIVAS_${platform}_${text}_${Date.now()}.mp4`;
+        btn.textContent = text;
+        btn.style.cssText = `
+            display:block;
+            margin:12px 0;
+            padding:16px;
+            border-radius:12px;
+            font-size:1.2rem;
+            font-weight:700;
+            text-align:center;
+            background:${color};
+            color:white;
+            text-decoration:none;
+            box-shadow:0 6px 15px rgba(0,0,0,0.2);
+        `;
+        box.appendChild(btn);
+    }
+
+    add("Download HD", q.hd, "#38a169");
+    add("Download SD", q.sd, "#3182ce");
+    add("Download MP3 / Audio", q.audio, "#d53f8c");
+}
+
+/* ===================== DOWNLOAD ENGINE ===================== */
+
+async function downloadVideo(url) {
+    const result = document.getElementById("result");
+    const preview = document.getElementById("preview");
+    const thumb = document.getElementById("thumbnail");
+
+    result.classList.remove("show");
+    preview.style.display = "none";
+    thumb.style.display = "none";
+
+    const platform = detectPlatform(url);
+    if (!platform) return showStatus("Unsupported link.", "error");
+
+    let qualities = null;
+    let thumbnail = null;
+
+    for (let api of APIS[platform]) {
+        try {
+            showStatus(`Trying ${api.name}...`);
+
+            const fullUrl = api.url + encodeURIComponent(url);
+            const res = await Promise.race([
+                fetch(fullUrl),
+                new Promise((_, r) => setTimeout(() => r(new Error("Timeout")), 15000))
+            ]);
+
+            if (!res.ok) throw new Error("HTTP " + res.status);
+
+            const data = await safeJson(res);
+            if (!data) continue;
+
+            qualities = extractVideoQualities(data, platform);
+            thumbnail = extractThumbnail(data, platform);
+
+            if (qualities.hd || qualities.sd || qualities.audio) break;
+
+        } catch (err) {
+            console.warn(api.name + " failed:", err.message);
+        }
+    }
+
+    if (!qualities || (!qualities.hd && !qualities.sd))
+        return showStatus("No video found. Try another link.", "error");
+
+    if (thumbnail) {
+        const img = document.getElementById("thumbnail");
+        img.src = thumbnail;
+        img.style.display = "block";
+    }
+
+    const previewUrl = qualities.hd || qualities.sd;
+    preview.src = previewUrl;
+    preview.style.display = "block";
+
+    buildQualityButtons(qualities, platform);
+
+    result.classList.add("show");
+    showStatus("Select a quality to download!", "success");
+
+    setTimeout(() => result.scrollIntoView({ behavior: "smooth" }), 150);
+}
+
+/* ===================== AUTO-PASTE BUTTON ===================== */
+
+async function autoPaste() {
+    try {
+        const text = await navigator.clipboard.readText();
+        document.getElementById("urlInput").value = text;
+        showStatus("Pasted from clipboard!", "success");
+    } catch {
+        showStatus("Clipboard access blocked.", "error");
+    }
+}
+
+/* ===================== EVENTS ===================== */
+
+document.getElementById("downloadBtn").addEventListener("click", async () => {
+    const url = document.getElementById("urlInput").value.trim();
+    if (!url) return showStatus("Paste a link first.", "error");
+
+    document.getElementById("downloadBtn").disabled = true;
+    await downloadVideo(url);
+    document.getElementById("downloadBtn").disabled = false;
+});
+
+document.getElementById("urlInput").addEventListener("keypress", e => {
+    if (e.key === "Enter") document.getElementById("downloadBtn").click();
+});
+</script>
