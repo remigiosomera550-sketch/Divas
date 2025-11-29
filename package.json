@@ -1,0 +1,23 @@
+{
+  "name": "divas-downloader",
+  "version": "1.0.0",
+  "description": "Multi-Platform Video & Photo Downloader for TikTok, Facebook, YouTube, and Instagram",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "downloader",
+    "video",
+    "tiktok",
+    "facebook",
+    "youtube",
+    "instagram"
+  ],
+  "author": "aremos357",
+  "license": "ISC",
+  "engines": {
+    "node": "18.x"
+  }
+}
